@@ -9,7 +9,6 @@ use cpal::{
     StreamConfig,
 };
 use num_complex::Complex;
-use rustfft::num_traits::real::Real;
 use sdl2::{event::Event, keyboard::Keycode, pixels::Color, rect::Rect};
 
 struct NoteStatus {
@@ -254,16 +253,12 @@ fn main() {
         );
 
         let note_status = NoteStatus::new(real_frequency);
-        /* let key = NoteStatus::frequency_to_key_number(real_frequency);
-        let raw_note = NoteStatus::key_to_raw_note_number(key);
-        let note = NoteStatus::key_to_raw_note_number(key.round());
-        let error_percentage = NoteStatus::get_error_percentage(raw_note, note); */
 
         print!(
-                // "{esc}[2J{esc}[1;1H Buffer len: {buf_len}; max[{bin_index}]: {freq:10.2}Hz ({note}{octave}). Out of tune: {error_percentage}%",
-                "\r Buffer_len: {:6} Freq[{analyizing_bin_index:4}]: {real_frequency:10.2}Hz ({note}{octave}). Out of tune: {:4}%{fix_line}",
+                "\r Buffer_len: {:6} Amplitude Percentage: {amplitude_percentage} Freq[{analyizing_bin_index:4}]: {real_frequency:10.2}Hz ({note}{octave}). Out of tune: {:4}%{fix_line}",
                 data.len(),
                 note_status.error_percentage,
+                amplitude_percentage=((data[analyizing_bin_index] / highest_amplitude_bin.1) * 100.0).round(),
                 note = NoteStatus::note_number_to_name(note_status.note_number),
                 octave= NoteStatus::get_octave_by_key_number(note_status.key_number),
                 fix_line = (0..10).map(|_| " ").collect::<Vec<&str>>().join("")
