@@ -1,4 +1,5 @@
 use std::{
+    f32::consts::PI,
     io::{stdout, Write},
     sync::{Arc, Mutex},
     time::Duration,
@@ -8,10 +9,12 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     StreamConfig,
 };
+use ndarray::{s, Array1};
 use num_complex::Complex;
 use sdl2::{event::Event, keyboard::Keycode, pixels::Color, rect::Rect};
 
 struct NoteStatus {
+    frequency_in_hz: f32,
     pub key_number: f32,
     pub raw_note_number: f32,
     pub note_number: f32,
@@ -26,11 +29,16 @@ impl NoteStatus {
         let error_percentage = Self::get_error_percentage(raw_note_number, note_number);
 
         Self {
+            frequency_in_hz,
             key_number,
             raw_note_number,
             note_number,
             error_percentage,
         }
+    }
+
+    pub fn get_frequency_in_hz(&self) -> f32 {
+        self.frequency_in_hz
     }
 
     /*
@@ -88,13 +96,150 @@ impl NoteStatus {
     }
 }
 
+/*
+ * I designed the code this way because creating a Graph
+ * gives you the freedom of having as many graphs with as many implementations of the data
+ * underneath it as you want, then you can just copy and paste the bar rendering loop and
+ * change it to the second graph.
+ *
+ * Tho, don't forget to create separate a "data_locker" for each one of the graphs or they will
+ * literally just output the same result, since the underlying data will be the same
+ */
 struct Graph {
-    // Some state
+    pub width: u32,
+    pub height: u32,
+    buffer_size: usize,
     max_displayed_frequency: usize,
     data_buffer: Vec<f32>,
     data_locker: Arc<Mutex<Vec<f32>>>,
     paused: Arc<Mutex<bool>>,
     mouse_x: Arc<Mutex<i32>>,
+}
+
+struct GraphBar {
+    pub width: u32,
+    pub height: u32,
+    pub x: i32,
+    pub y: i32,
+}
+
+struct FrequencyData {
+    pub note_status: NoteStatus,
+    pub amplitude_percentage: u8,
+    pub analyzing_bin_index: usize,
+}
+
+impl Graph {
+    pub fn get_buffer_len(&self) -> usize {
+        self.data_buffer.len()
+    }
+    pub fn run(&mut self, stream_sample_rate: u32) -> (Vec<GraphBar>, Option<FrequencyData>) {
+        {
+            let paused = self.paused.lock().unwrap();
+            if !(*paused) {
+                let locker = self.data_locker.lock().unwrap();
+                self.data_buffer = (*locker).clone();
+            }
+        }
+
+        // Gets the min number of bins required to be able to display
+        // the max desired frequency in Hz
+        let max_bins_displayed_len =
+            (self.max_displayed_frequency * self.data_buffer.len()) / stream_sample_rate as usize;
+        let subset_bins = &self.data_buffer[0..max_bins_displayed_len];
+
+        // Gets some graph dimensions
+        let frequency_bar_width = (self.width as f64 / max_bins_displayed_len as f64) as i32;
+        let padding_top = 10;
+        let ground_y = 30;
+
+        // Since the buffer_size may become large, it may take a few seconds or ms to start getting
+        // data and because of that it's good to prevent some errors that might rase like
+        // "deviding by zero"
+        if self.data_buffer.len() < self.buffer_size {
+            return (vec![], None);
+        }
+        let highest_amplitude_bin = self
+            .data_buffer
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+            .unwrap();
+
+        let mut bars = vec![];
+
+        for (i, data) in subset_bins.iter().enumerate() {
+            let frequency_bar_height = ((self.height - ground_y - padding_top) as f32 * data
+                / (highest_amplitude_bin.1 * 1.1)) as u32;
+            bars.push(GraphBar {
+                x: frequency_bar_width * i as i32,
+                y: (self.height - ground_y - frequency_bar_height) as i32,
+                width: frequency_bar_width as u32,
+                height: frequency_bar_height,
+            });
+        }
+
+        let mouse_x = {
+            let mouse_x = self.mouse_x.lock().unwrap();
+            *mouse_x
+        };
+
+        if mouse_x >= frequency_bar_width * max_bins_displayed_len as i32 {
+            return (bars, None);
+        }
+
+        let analyzing_bin_index = (mouse_x / frequency_bar_width) as usize % max_bins_displayed_len;
+
+        let real_frequency = NoteStatus::bin_index_to_frequency_in_hz(
+            analyzing_bin_index,
+            self.data_buffer.len(),
+            stream_sample_rate,
+        );
+
+        let note_status = NoteStatus::new(real_frequency);
+
+        (
+            bars,
+            Some(FrequencyData {
+                note_status,
+                analyzing_bin_index,
+                amplitude_percentage: ((self.data_buffer[analyzing_bin_index]
+                    / highest_amplitude_bin.1)
+                    * 100.0)
+                    .round() as u8,
+            }),
+        )
+    }
+}
+
+fn is_power_of_two(n: usize) -> bool {
+    n != 0 && (n & (n - 1)) == 0
+}
+
+fn fft(signal: &Array1<Complex<f32>>) -> Array1<Complex<f32>> {
+    let n = signal.len();
+    if !is_power_of_two(n) {
+        panic!("For this implementation of the FFT, the signal.len() must be a power of 2. You can pad with zeros the signal to reach the closest power of 2");
+    }
+
+    if n == 1 {
+        return signal.to_owned();
+    }
+
+    let even = fft(&signal.slice(s![..;2]).to_owned());
+    let odd = fft(&signal.slice(s![1..;2]).to_owned());
+
+    let max_frequency_range = n / 2;
+
+    let mut output = Array1::<Complex<f32>>::zeros(n);
+
+    for k in 0..max_frequency_range {
+        let t = Complex::new(0.0, -2.0 * PI * k as f32 / (n as f32)).exp() * odd[k];
+        output[k] = even[k] + t;
+        output[k + max_frequency_range] = even[k] - t;
+    }
+
+    output
 }
 
 fn main() {
@@ -140,13 +285,29 @@ fn main() {
                 // If the buffer is in it's desired size, performs the fft and sends it to the
                 // result_buffer
                 if buf.len() == buffer_size {
-                    let mut output = ndarray::Array1::<Complex<f32>>::from_iter(
+                    let output = fft(&ndarray::Array1::<Complex<f32>>::from_iter(
                         buf.iter().map(|x| Complex::from(x)),
-                    );
+                    ));
+
+                    /*
+                     * This project was made as a learning resource for the FFT algorithm
+                     * My implementation is not even near as performant as
+                     * the standard "rustfft" crate. So, in real world applications use the
+                     * official "rustfft" crate instead of my "fft" implementation.
+                     *
+                     * Besides the HUGE difference in performance, the fft crate can calculate the
+                     * FFT for buffers of any size. While my implementation only give correct
+                     * results when running in a buffer that has a length that is a power of two.
+                     *
+                     * If you want to see how to use the "rustfft" crate, take a look at their
+                     * docs, but if you just want to set it up in this example you can use the
+                     * following code instead of my "fft" function and don't forget to remove the
+                     * call to the fft in the line above:
+                    // This is code is in the version rustfft = "6.2.0"
                     rustfft::FftPlanner::new()
                         .plan_fft_forward(output.len())
                         .process(output.as_slice_mut().unwrap());
-
+                     */
                     let mut result = fft_stream.lock().unwrap();
                     *result = output.iter().map(|x| x.norm()).collect();
                     *buf = remaining;
@@ -180,9 +341,19 @@ fn main() {
 
     // Some state
     let max_displayed_frequency = 3000;
-    let mut data = vec![];
-    let mut paused = false;
-    let mut mouse_x = 0;
+    let paused = Arc::new(Mutex::new(false));
+    let mouse_x = Arc::new(Mutex::new(0));
+
+    let mut rustfft_graph = Graph {
+        data_buffer: vec![],
+        data_locker: fft_transform,
+        width: canvas.window().size().0,
+        height: canvas.window().size().1,
+        max_displayed_frequency,
+        buffer_size,
+        mouse_x: mouse_x.clone(),
+        paused: paused.clone(),
+    };
 
     'running: loop {
         struct WindowSize {
@@ -195,29 +366,8 @@ fn main() {
             height: window_size.1,
         };
 
-        if !paused {
-            let locker = fft_transform.lock().unwrap();
-            data = (*locker).clone();
-        }
-
-        // Gets the min number of bins required to be able to display
-        // the max desired frequency in Hz
-        let max_bins_displayed_len =
-            (max_displayed_frequency * data.len()) / stream_sample_rate as usize;
-        let subset_bins = &data[0..max_bins_displayed_len];
-
-        // Gets some graph dimensions
-        let frequency_bar_width = (window_size.width as f64 / max_bins_displayed_len as f64) as i32;
-        let padding_top = 10;
-        let ground_y = 30;
-        if data.len() < buffer_size {
-            continue 'running;
-        }
-        let highest_amplitude_bin = data
-            .iter()
-            .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-            .unwrap();
+        rustfft_graph.width = window_size.width;
+        rustfft_graph.height = window_size.height;
 
         for event in event_pump.poll_iter() {
             match event {
@@ -230,58 +380,42 @@ fn main() {
                     keycode: Some(Keycode::P),
                     ..
                 } => {
-                    paused = !paused;
+                    let mut p_lock = paused.lock().unwrap();
+                    *p_lock = !*p_lock;
                 }
                 Event::MouseMotion { x, .. } => {
-                    if x >= frequency_bar_width * max_bins_displayed_len as i32 {
-                        continue;
-                    }
-
-                    mouse_x = x;
+                    let mut m_lock = mouse_x.lock().unwrap();
+                    *m_lock = x;
                 }
                 _ => {}
             }
         }
 
-        let analyizing_bin_index =
-            (mouse_x / frequency_bar_width) as usize % max_bins_displayed_len;
+        let (bars, frequency_data) = rustfft_graph.run(stream_sample_rate);
 
-        let real_frequency = NoteStatus::bin_index_to_frequency_in_hz(
-            analyizing_bin_index,
-            data.len(),
-            stream_sample_rate,
-        );
-
-        let note_status = NoteStatus::new(real_frequency);
-
-        print!(
-                "\r Buffer_len: {:6} Amplitude Percentage: {amplitude_percentage} Freq[{analyizing_bin_index:4}]: {real_frequency:10.2}Hz ({note}{octave}). Out of tune: {:4}%{fix_line}",
-                data.len(),
-                note_status.error_percentage,
-                amplitude_percentage=((data[analyizing_bin_index] / highest_amplitude_bin.1) * 100.0).round(),
-                note = NoteStatus::note_number_to_name(note_status.note_number),
-                octave= NoteStatus::get_octave_by_key_number(note_status.key_number),
+        if let Some(frequency_data) = frequency_data {
+            let analyzing_bin_index = frequency_data.analyzing_bin_index;
+            let real_frequency = frequency_data.note_status.get_frequency_in_hz();
+            print!(
+                "\r Buffer_len: {:6} Amplitude Percentage: {amplitude_percentage} Freq[{analyzing_bin_index:4}]: {real_frequency:10.2}Hz ({note}{octave}). Out of tune: {:4}%{fix_line}",
+                rustfft_graph.get_buffer_len(),
+                frequency_data.note_status.error_percentage,
+                amplitude_percentage=frequency_data.amplitude_percentage,
+                note = NoteStatus::note_number_to_name(frequency_data.note_status.note_number),
+                octave= NoteStatus::get_octave_by_key_number(frequency_data.note_status.key_number),
                 fix_line = (0..10).map(|_| " ").collect::<Vec<&str>>().join("")
             );
-        stdout().flush().unwrap();
+            stdout().flush().unwrap();
+        }
 
         // Rendering:
-        // Clears the screen
         canvas.set_draw_color(Color::RGB(30, 30, 30));
         canvas.clear();
 
         canvas.set_draw_color(Color::RGBA(200, 100, 100, 255));
-
-        for (i, data) in subset_bins.iter().enumerate() {
-            let frequency_bar_height = ((window_size.height - ground_y - padding_top) as f32 * data
-                / (highest_amplitude_bin.1 * 1.1)) as u32;
+        for bar in bars {
             canvas
-                .draw_rect(Rect::new(
-                    frequency_bar_width * i as i32,
-                    (window_size.height - ground_y - frequency_bar_height) as i32,
-                    frequency_bar_width as u32,
-                    frequency_bar_height,
-                ))
+                .draw_rect(Rect::new(bar.x, bar.y, bar.width, bar.height))
                 .unwrap();
         }
 
