@@ -1,0 +1,14 @@
+[package]
+name = "mic_frequencies_analyzer"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cpal = "0.15.3"
+ndarray = "0.16.1"
+num-complex = "0.4.6"
+rand = "0.8.5"
+rustfft = "6.2.0"
+sdl2 = "0.37.0"
