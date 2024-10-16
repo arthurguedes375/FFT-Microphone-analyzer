@@ -96,7 +96,7 @@ But, we are lucky that there is a specific way to calculate the discrete Fourier
 Check out the links below to understand the formula and the intuition behind the FFT implementation.
 
 ### Note on complex numbers
-***We can write a sum of a sine and a cosine as $e^{ix}$, because Euler's formula states that $e^{ix} = cos(x) + i\sin(x)$***.
+***We can write a sum of a sine and a cosine as $e^{ix}$, because Euler's formula states that*** $e^{ix} = cos(x) + i\sin(x)$.
 To learn more about Euler's formula, you can watch [this 3blue1brown video](https://www.youtube.com/watch?v=mvmuCPvRoWQ).
 
 
