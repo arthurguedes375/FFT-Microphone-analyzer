@@ -1,6 +1,8 @@
-# The not ultimate blazingly slow Rust FFT implementation! :fire:
+# The ultimate blazingly SLOW Rust FFT implementation :fire:
 
-## About
+![Image of the code running](./assets/demo.png)
+
+## About :computer:
 This repo is meant to be a learning resource to learn the basics of FFT. I coded a simple FFT implementation used in the real world example of decomposing an audio into its frequencies.
 
 First it gets the samples directly from the microphone in real time and then it performs the FFT to get the frequencies.
@@ -8,12 +10,39 @@ First it gets the samples directly from the microphone in real time and then it 
 After having the frequencies, it creates a window with the raw dog sdl2 and then creates a graph and plots the resulting frequencies as well as their contribution to the final audio.
 
 
-## Discrete Fourier Transform (DFT)
+## Libraries :rocket:
+1. [Cpal.rs](https://crates.io/crates/cpal) For audio capturing
+2. [Sdl2.rs](https://crates.io/crates/sdl2) For drawing graphics
 
+## How to run :clipboard:
+First you need to install the sdl2. You can take a look at their [crates.io](https://crates.io/crates/sdl2#requirements) to install it.
+
+On Ubuntu you can just run:
+```bash
+sudo apt-get install libsdl2-dev
+```
+
+Then you need to install the [Cpal.rs](https://crates.io/crates/sdl2) dependencies, take a look at their [crates.io](https://crates.io/crates/cpal).
+On Ubuntu you can just run:
+```bash
+sudo apt install libasound2-dev
+```
+After installing the dependencies you can run it with:
+```bash
+cargo run
+```
+
+
+## Discrete Fourier Transform (DFT)
 The Discrete Fourier Transform (DFT) is a mathematical operation that transform a discrete-time signal into frequency domain.
 
 Basically just imagine that you captured some evenly spaced values of a function, like the image below:
-!(Image of a graph containing evenly spaced values of a function f(x))[docs/evenly_spaced_values_of_function.jpeg]
+
+<div align="center">
+
+![Image of a graph containing evenly spaced values of a function f(x)](./docs/evenly_spaced_values_of_function.jpg)
+
+</div>
 
 Any function can be written as a sum of sines and cosines. And every sum of sines and cosines have a frequency, an amplitude and a phase. 
 
