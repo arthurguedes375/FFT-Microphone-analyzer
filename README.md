@@ -47,7 +47,7 @@ Take a look at the following image:
 
 </div>
 
-The third graph is a sum of the two graphs above it. The only problem is that given a function f(x) it's not obvious what are the many sin and cosines that compose that function.
+The third graph is a sum of the two graphs above it. The only problem is that given a function f(x) it's not obvious what the many sin and cosines that compose that function are.
 
 That is why the Fourier Transform was made. But notice that I said Fourier Transform instead of Discrete Fourier Transform. That difference is because when we are talking about Fourier Transforms, we use it when we want to find the sum of sines and cosines of a function like $f(x) = log(x)$
 
@@ -67,7 +67,7 @@ Take a look at the following images of a lot of data points evenly spaced in tim
 
 This bunch of data points is called the discrete-time domain of the function f(x). Which basically means that we have a lot of points that look just like x.
 
-Every oscillating function (NOTE: we are going to call all oscillating function "waves" or "signals" from now on) like sine or cosine, have a phase, an amplitude and a frequency.
+Every oscillating function (NOTE: we are going to call all oscillating functions "waves" or "signals" from now on) like sine or cosine, have a phase, an amplitude and a frequency.
 
 1. Phase: The phase is a little bit hard to explain, but it is sort of how far the function is shifted to the left or to the right.
 2. Amplitude: The amplitude is the distance between the middle of the function and its highest point
@@ -96,7 +96,7 @@ But, we are lucky that there is a specific way to calculate the discrete Fourier
 Check out the links below to understand the formula and the intuition behind the FFT implementation.
 
 ### Note on complex numbers
-***We can write a sum of a sine and a cosine as $e^{ix}$, because Euler's formula states that*** $e^{ix} = cos(x) + i\sin(x)$.
+***We can write a sum of a sine and a cosine as*** $e^{ix}$***, because Euler's formula states that*** $e^{ix} = cos(x) + i\sin(x)$.
 To learn more about Euler's formula, you can watch [this 3blue1brown video](https://www.youtube.com/watch?v=mvmuCPvRoWQ).
 
 
@@ -139,7 +139,7 @@ The next videos are good videos but only after you've watched the first videos:
 
 1. [Simon Xu about the FFT](https://youtu.be/htCj9exbGo0?si=xL6jBgNIaI4O31Lh)
 
-The following videos are not the best explanation, but these are good videos and also have an implementation of the FFT, but the implementation in the videos is wrong, read the description of the video. They were made by Reducible:
+The following videos are not the best explanation, but these are good videos and also have an implementation of the FFT, but ***the implementation in the videos is wrong, read the description and the comments of each video***. They were made by Reducible:
 1. [Intuition video](https://youtu.be/h7apO7q16V0?si=nIwYoXWGVBNcb5pn)
 1. [Runnning algorithm](https://youtu.be/Ty0JcR6Dvis?si=qVw8XtbQC-g81iYT)
 
