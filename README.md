@@ -109,7 +109,7 @@ Variables:
 4. $ŝ[f] = \text{The discrete Fourier transform of the frequency }f\text{ against that signal (How much of frequency} f \text{is in the signal s)}$
  
  
-Discrete Fourier Transform formula: $ŝ[f] = \sum^{N-1}_{n=0}s_{[n]}\zeta^{fn}$
+Discrete Fourier Transform formula: $ŝ[f] = \sum^{N-1}_{n=0}s_n\zeta^{fn}$
  
  The output will give us an complex number with a real ($a$) and an imaginary part ($b$). The real part is the $cos$ function, and the imaginary part is the $sin$ function. These give us the phase of the frequency.
  Therefore: $ŝ_{[f]}=a + ib$
