@@ -61,4 +61,4 @@ Even with a modern computer it would be too slow to run this algorithm and, beca
 
 But, we are lucky that there is a specific way to calculate the discrete Fourier transform. This specific way to calculate the DFT has a time complexity of nlog(n) and it's called Fast Fourier Transform or FFT for short.
 
-You can [click here](docs/FFT.md) to understand the specifics of the FFT algorithm, its formula and its mathematical explanation.
+You can [click here](docs/DFT.md) to understand the specifics of the FFT algorithm, its formula and its mathematical explanation.
