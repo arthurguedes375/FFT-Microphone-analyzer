@@ -13,12 +13,13 @@ use ndarray::{s, Array1};
 use num_complex::Complex;
 use sdl2::{event::Event, keyboard::Keycode, pixels::Color, rect::Rect};
 
+#[derive(Clone)]
 struct NoteStatus {
     frequency_in_hz: f32,
     pub key_number: f32,
     pub raw_note_number: f32,
     pub note_number: f32,
-    pub error_percentage: u8,
+    pub error_percentage: i8,
 }
 
 impl NoteStatus {
@@ -72,8 +73,8 @@ impl NoteStatus {
         notes_names[(key - 1.0) as usize].into()
     }
 
-    fn get_error_percentage(raw_note_number: f32, target_note_number: f32) -> u8 {
-        ((raw_note_number - target_note_number) * 100.0).round() as u8
+    fn get_error_percentage(raw_note_number: f32, target_note_number: f32) -> i8 {
+        ((raw_note_number - target_note_number) * 100.0).round() as i8
     }
 
     /**
@@ -121,8 +122,10 @@ struct GraphBar {
     pub height: u32,
     pub x: i32,
     pub y: i32,
+    pub frequency_data: FrequencyData,
 }
 
+#[derive(Clone)]
 struct FrequencyData {
     pub note_status: NoteStatus,
     pub amplitude_percentage: u8,
@@ -133,7 +136,7 @@ impl Graph {
     pub fn get_buffer_len(&self) -> usize {
         self.data_buffer.len()
     }
-    pub fn run(&mut self, stream_sample_rate: u32) -> (Vec<GraphBar>, Option<FrequencyData>) {
+    pub fn run(&mut self, stream_sample_rate: u32) -> (Vec<GraphBar>, Option<usize>) {
         {
             let paused = self.paused.lock().unwrap();
             if !(*paused) {
@@ -171,11 +174,24 @@ impl Graph {
         for (i, data) in subset_bins.iter().enumerate() {
             let frequency_bar_height = ((self.height - ground_y - padding_top) as f32 * data
                 / (highest_amplitude_bin.1 * 1.1)) as u32;
+            let real_frequency = NoteStatus::bin_index_to_frequency_in_hz(
+                i,
+                self.data_buffer.len(),
+                stream_sample_rate,
+            );
+
+            let note_status = NoteStatus::new(real_frequency);
             bars.push(GraphBar {
                 x: frequency_bar_width * i as i32,
                 y: (self.height - ground_y - frequency_bar_height) as i32,
                 width: frequency_bar_width as u32,
                 height: frequency_bar_height,
+                frequency_data: FrequencyData {
+                    note_status,
+                    analyzing_bin_index: i,
+                    amplitude_percentage: ((self.data_buffer[i] / highest_amplitude_bin.1) * 100.0)
+                        .round() as u8,
+                },
             });
         }
 
@@ -190,25 +206,7 @@ impl Graph {
 
         let analyzing_bin_index = (mouse_x / frequency_bar_width) as usize % max_bins_displayed_len;
 
-        let real_frequency = NoteStatus::bin_index_to_frequency_in_hz(
-            analyzing_bin_index,
-            self.data_buffer.len(),
-            stream_sample_rate,
-        );
-
-        let note_status = NoteStatus::new(real_frequency);
-
-        (
-            bars,
-            Some(FrequencyData {
-                note_status,
-                analyzing_bin_index,
-                amplitude_percentage: ((self.data_buffer[analyzing_bin_index]
-                    / highest_amplitude_bin.1)
-                    * 100.0)
-                    .round() as u8,
-            }),
-        )
+        (bars, Some(analyzing_bin_index))
     }
 }
 
@@ -240,6 +238,11 @@ fn fft(signal: &Array1<Complex<f32>>) -> Array1<Complex<f32>> {
     }
 
     output
+}
+
+enum DisplayColors {
+    Error,
+    Amplitude,
 }
 
 fn main() {
@@ -355,6 +358,8 @@ fn main() {
         paused: paused.clone(),
     };
 
+    let display_colors = DisplayColors::Amplitude;
+
     'running: loop {
         struct WindowSize {
             width: u32,
@@ -391,9 +396,10 @@ fn main() {
             }
         }
 
-        let (bars, frequency_data) = rustfft_graph.run(stream_sample_rate);
+        let (bars, frequency_data_index) = rustfft_graph.run(stream_sample_rate);
 
-        if let Some(frequency_data) = frequency_data {
+        if let Some(frequency_data_index) = frequency_data_index {
+            let frequency_data = &bars[frequency_data_index].frequency_data;
             let analyzing_bin_index = frequency_data.analyzing_bin_index;
             let real_frequency = frequency_data.note_status.get_frequency_in_hz();
             print!(
@@ -409,13 +415,40 @@ fn main() {
         }
 
         // Rendering:
-        canvas.set_draw_color(Color::RGB(30, 30, 30));
+        // canvas.set_draw_color(Color::RGB(30, 30, 30));
+        canvas.set_draw_color(Color::RGB(240, 240, 240));
         canvas.clear();
 
-        canvas.set_draw_color(Color::RGBA(200, 100, 100, 255));
         for bar in bars {
+            match display_colors {
+                DisplayColors::Error => {
+                    let error_gap = 20;
+                    if bar.frequency_data.note_status.error_percentage > error_gap {
+                        canvas.set_draw_color(Color::RGBA(239, 71, 111, 255));
+                    } else if bar.frequency_data.note_status.error_percentage < (-1 * error_gap) {
+                        canvas.set_draw_color(Color::RGBA(255, 209, 102, 255));
+                    } else {
+                        canvas.set_draw_color(Color::RGBA(6, 214, 160, 255));
+                    }
+                }
+                DisplayColors::Amplitude => {
+                    let max_red = 200.0;
+                    let min_red = 63.0;
+
+                    let max_blue = 184.0;
+                    let min_blue = 104.0;
+                    let amplitude_percentage =
+                        bar.frequency_data.amplitude_percentage as f64 / 100.0;
+                    canvas.set_draw_color(Color::RGBA(
+                        (amplitude_percentage * (max_red - min_red) + min_red).round() as u8,
+                        36,
+                        (((1.0 - amplitude_percentage) * (max_blue - min_blue) + min_blue).round()) as u8,
+                        255,
+                    ));
+                }
+            }
             canvas
-                .draw_rect(Rect::new(bar.x, bar.y, bar.width, bar.height))
+                .fill_rect(Rect::new(bar.x, bar.y, bar.width, bar.height))
                 .unwrap();
         }
 
